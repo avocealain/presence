@@ -17,6 +17,18 @@ Route::get('/', function () {
     ]);
 });
 
+Route::get('/privacy', function () {
+    return Inertia::render('Legal/Privacy');
+})->name('privacy');
+
+Route::get('/terms', function () {
+    return Inertia::render('Legal/Terms');
+})->name('terms');
+
+Route::get('/support', function () {
+    return Inertia::render('Legal/Support');
+})->name('support');
+
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
@@ -42,6 +54,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
 
     Route::post('/admin/courses', [AdminController::class, 'storeCourse'])
         ->name('admin.courses.store');
+
+    Route::get('/admin/enrollments', [AdminController::class, 'listEnrollments'])
+        ->name('admin.enrollments');
+
+    Route::post('/admin/enrollments', [AdminController::class, 'storeEnrollment'])
+        ->name('admin.enrollments.store');
+
+    Route::patch('/admin/enrollments/{enrollment}/status', [AdminController::class, 'updateEnrollmentStatus'])
+        ->name('admin.enrollments.status');
 });
 
 // ============================================

@@ -38,7 +38,9 @@ class AttendanceController extends Controller
 
         try {
             $attendanceData = DB::transaction(function () use ($request) {
-                $qrSession = QRSession::where('token', $request->input('token'))
+                /** @var QRSession|null $qrSession */
+                $qrSession = QRSession::query()
+                    ->where('token', $request->input('token'))
                     ->with('classSession')
                     ->lockForUpdate()
                     ->first();
@@ -248,7 +250,10 @@ class AttendanceController extends Controller
             'token' => ['required', 'string'],
         ]);
 
-        $qrSession = QRSession::where('token', $request->input('token'))->first();
+        /** @var QRSession|null $qrSession */
+        $qrSession = QRSession::query()
+            ->where('token', $request->input('token'))
+            ->first();
 
         if (!$qrSession || !$qrSession->isValid()) {
             return response()->json([
@@ -304,6 +309,7 @@ class AttendanceController extends Controller
         $enrollment = CourseEnrollment::where([
             'course_id' => $courseId,
             'student_id' => auth()->id(),
+            'status' => 'active',
         ])->first();
 
         if (!$enrollment) {

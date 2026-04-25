@@ -14,7 +14,7 @@ export default function StudentDashboard({ auth, enrollments, stats }) {
                 <Card variant="gradient" className="border border-blue-100">
                     <div className="flex items-start justify-between">
                         <div>
-                            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {auth.user.name}! 👋</h2>
+                            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {auth.user.name}!</h2>
                             <p className="text-gray-700">Here's an overview of your courses and attendance performance.</p>
                         </div>
                         <SparklesIcon className="w-12 h-12 text-blue-400 flex-shrink-0" />

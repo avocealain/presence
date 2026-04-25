@@ -207,8 +207,12 @@ export default function AdminCourses({ auth, courses, teachers }) {
                                             </td>
                                             <td className="whitespace-nowrap px-6 py-4">
                                                 <div className="text-center">
-                                                    <div className="text-lg font-bold text-gray-900">{course.enrollments_count || 0}</div>
-                                                    <div className="text-xs text-gray-600">enrolled</div>
+                                                    <div className="text-lg font-bold text-gray-900">
+                                                        {course.active_enrollments_count || 0}/{course.max_students || 0}
+                                                    </div>
+                                                    <div className="text-xs text-gray-600">
+                                                        active ({course.total_enrollments_count || 0} total)
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="whitespace-nowrap px-6 py-4 text-gray-600">{course.academic_year}</td>

@@ -210,9 +210,9 @@ export default function Welcome({ auth }) {
                                 <p>&copy; 2026 Smart Attendance System. All rights reserved.</p>
                             </div>
                             <div className="flex gap-6">
-                                <a href="#" className="hover:text-white transition">Privacy</a>
-                                <a href="#" className="hover:text-white transition">Terms</a>
-                                <a href="#" className="hover:text-white transition">Support</a>
+                                <Link href={route('privacy')} className="hover:text-white transition">Privacy</Link>
+                                <Link href={route('terms')} className="hover:text-white transition">Terms</Link>
+                                <Link href={route('support')} className="hover:text-white transition">Support</Link>
                             </div>
                         </div>
                     </div>

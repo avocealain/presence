@@ -2,8 +2,7 @@ import React from 'react';
 import AdminLayout from '@/Components/AdminLayout';
 import Card from '@/Components/Card';
 import StatCard from '@/Components/StatCard';
-import PrimaryButton from '@/Components/PrimaryButton';
-import { UsersIcon, BookOpenIcon, CheckCircleIcon, AcademicCapIcon, ArrowTrendingUpIcon } from '@heroicons/react/24/outline';
+import { UsersIcon, BookOpenIcon, CheckCircleIcon, AcademicCapIcon, ArrowTrendingUpIcon, UserPlusIcon } from '@heroicons/react/24/outline';
 
 export default function AdminDashboard({ auth, stats }) {
     return (
@@ -73,6 +72,16 @@ export default function AdminDashboard({ auth, stats }) {
                                     <p className="text-sm text-gray-600">Add or edit courses</p>
                                 </div>
                                 <BookOpenIcon className="w-6 h-6 text-green-600 group-hover:scale-110 transition-transform" />
+                            </a>
+                            <a
+                                href="/admin/enrollments"
+                                className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 hover:from-amber-100 hover:to-amber-200 transition-all group border border-amber-200"
+                            >
+                                <div>
+                                    <p className="font-semibold text-gray-900">Enroll Students</p>
+                                    <p className="text-sm text-gray-600">Assign courses to students</p>
+                                </div>
+                                <UserPlusIcon className="w-6 h-6 text-amber-600 group-hover:scale-110 transition-transform" />
                             </a>
                             <button className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 transition-all group border border-purple-200">
                                 <div>

@@ -7,6 +7,7 @@ import {
     ChartBarIcon,
     UsersIcon,
     BookOpenIcon,
+    UserPlusIcon,
 } from '@heroicons/react/24/outline';
 
 export default function AdminLayout({ user, children, title }) {
@@ -16,6 +17,7 @@ export default function AdminLayout({ user, children, title }) {
         { label: 'Dashboard', href: '/admin/dashboard', icon: ChartBarIcon },
         { label: 'Users', href: '/admin/users', icon: UsersIcon },
         { label: 'Courses', href: '/admin/courses', icon: BookOpenIcon },
+        { label: 'Enrollments', href: '/admin/enrollments', icon: UserPlusIcon },
     ];
 
     return (

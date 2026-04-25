@@ -6,11 +6,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class QRSession extends Model
 {
     use HasFactory;
+
+    protected $table = 'qr_sessions';
 
     protected $fillable = [
         'course_id',
@@ -177,6 +181,9 @@ class QRSession extends Model
             return null;
         }
 
-        return \Illuminate\Support\Facades\Storage::disk('public')->url($this->qr_code_path);
+        /** @var FilesystemAdapter $publicDisk */
+        $publicDisk = Storage::disk('public');
+
+        return $publicDisk->url($this->qr_code_path);
     }
 }
