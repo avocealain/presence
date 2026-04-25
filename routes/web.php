@@ -39,6 +39,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
 
     Route::get('/admin/courses', [AdminController::class, 'listCourses'])
         ->name('admin.courses');
+
+    Route::post('/admin/courses', [AdminController::class, 'storeCourse'])
+        ->name('admin.courses.store');
 });
 
 // ============================================
@@ -59,6 +62,9 @@ Route::middleware(['auth', 'verified', 'role:teacher'])->group(function () {
 
     Route::post('/courses/{course}/qr/refresh', [TeacherController::class, 'refreshQR'])
         ->name('course.qr.refresh');
+
+    Route::post('/courses/{course}/qr/stop', [TeacherController::class, 'stopQR'])
+        ->name('course.qr.stop');
 
     Route::get('/courses/{course}/attendance', [TeacherController::class, 'viewAttendance'])
         ->name('course.attendance');

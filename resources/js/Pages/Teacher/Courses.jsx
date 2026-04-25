@@ -12,8 +12,12 @@ export default function TeacherCourses({ auth, courses }) {
                     <div>
                         <p className="text-gray-600">Total Courses: {courses.length}</p>
                     </div>
-                    <button className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors">
-                        Create New Course
+                    <button
+                        type="button"
+                        disabled
+                        className="cursor-not-allowed rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-600"
+                    >
+                        Course creation by admin
                     </button>
                 </div>
 
@@ -41,16 +45,12 @@ export default function TeacherCourses({ auth, courses }) {
                 ) : (
                     <EmptyState
                         title="No Courses Yet"
-                        message="You don't have any courses assigned. Create one to get started!"
+                        message="You don't have any courses assigned yet. Please contact an administrator."
                         icon={(props) => (
                             <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C6.5 6.253 2 10.998 2 17.001c0 5.591 3.824 10.29 9 11.622m0-13c5.5 0 10 4.745 10 10.999 0 5.592-3.824 10.29-9 11.622" />
                             </svg>
                         )}
-                        action={{
-                            label: 'Create Course',
-                            onClick: () => window.location.href = '/teacher/courses/create',
-                        }}
                     />
                 )}
             </div>

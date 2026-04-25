@@ -52,6 +52,37 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Class Session Configuration
+    |--------------------------------------------------------------------------
+    */
+
+    'session' => [
+        // Default duration for one class session
+        'default_duration_minutes' => env('ATTENDANCE_SESSION_DURATION_MINUTES', 90),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Location Validation Configuration
+    |--------------------------------------------------------------------------
+    */
+
+    'location' => [
+        // Enable geolocation checks globally
+        'enabled' => env('ATTENDANCE_LOCATION_ENABLED', true),
+
+        // Radius around teacher location considered valid
+        'default_radius_meters' => env('ATTENDANCE_LOCATION_RADIUS_METERS', 150),
+
+        // Extra tolerance added to distance checks
+        'accuracy_tolerance_meters' => env('ATTENDANCE_LOCATION_ACCURACY_TOLERANCE_METERS', 25),
+
+        // Allow attendance if student denies location permission
+        'allow_fallback_without_location' => env('ATTENDANCE_LOCATION_ALLOW_FALLBACK', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Cleanup Configuration
     |--------------------------------------------------------------------------
     */

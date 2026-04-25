@@ -8,6 +8,9 @@ use App\Models\CourseEnrollment;
 use App\Models\QRSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
 
 class AttendanceController extends Controller
@@ -25,88 +28,125 @@ class AttendanceController extends Controller
     {
         $request->validate([
             'token' => ['required', 'string'],
+            'course_id' => ['nullable', 'integer'],
             'device_info' => ['nullable', 'array'],
+            'location' => ['nullable', 'array'],
+            'location.latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'location.longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'location.accuracy' => ['nullable', 'numeric', 'min:0', 'max:10000'],
         ]);
 
         try {
-            // Step 1: Find QR Session by token
-            $qrSession = QRSession::where('token', $request->input('token'))->first();
+            $attendanceData = DB::transaction(function () use ($request) {
+                $qrSession = QRSession::where('token', $request->input('token'))
+                    ->with('classSession')
+                    ->lockForUpdate()
+                    ->first();
 
-            if (!$qrSession) {
-                throw ValidationException::withMessages([
-                    'token' => 'Invalid or expired QR code.',
-                ]);
-            }
+                if (!$qrSession) {
+                    throw ValidationException::withMessages([
+                        'token' => 'Invalid or expired QR code.',
+                    ]);
+                }
 
-            // Step 2: Check if QR session is active
-            if (!$qrSession->is_active) {
-                throw ValidationException::withMessages([
-                    'token' => 'This QR code is no longer active.',
-                ]);
-            }
+                if (!$qrSession->is_active) {
+                    throw ValidationException::withMessages([
+                        'token' => 'This QR code is no longer active.',
+                    ]);
+                }
 
-            // Step 3: Check if QR session has expired
-            if ($qrSession->isExpired()) {
-                throw ValidationException::withMessages([
-                    'token' => 'This QR code has expired. Please use a new one.',
-                ]);
-            }
+                if ($qrSession->isExpired()) {
+                    throw ValidationException::withMessages([
+                        'token' => 'This QR code has expired. Please use a new one.',
+                    ]);
+                }
 
-            // Step 4: Verify student is enrolled in this course
-            $enrollment = CourseEnrollment::where([
-                'course_id' => $qrSession->course_id,
-                'student_id' => auth()->id(),
-                'status' => 'active',
-            ])->first();
+                $enrollment = CourseEnrollment::where([
+                    'course_id' => $qrSession->course_id,
+                    'student_id' => auth()->id(),
+                    'status' => 'active',
+                ])->with('course')->first();
 
-            if (!$enrollment) {
-                throw ValidationException::withMessages([
-                    'token' => 'You are not enrolled in this course.',
-                ]);
-            }
+                if (!$enrollment) {
+                    throw ValidationException::withMessages([
+                        'token' => 'You are not enrolled in this course.',
+                    ]);
+                }
 
-            // Step 5: Check for duplicate attendance (same QR + student)
-            if (AttendanceRecord::where([
-                'qr_session_id' => $qrSession->id,
-                'student_id' => auth()->id(),
-            ])->exists()) {
-                throw ValidationException::withMessages([
-                    'token' => 'You have already marked attendance for this session.',
-                ]);
-            }
+                $locationPayload = $this->parseLocationPayload($request->input('location'));
+                $this->validateLocationRules($qrSession, $locationPayload);
 
-            // Step 6: Create attendance record
-            $record = AttendanceRecord::create([
-                'qr_session_id' => $qrSession->id,
-                'course_id' => $qrSession->course_id,
-                'enrollment_id' => $enrollment->id,
-                'student_id' => auth()->id(),
-                'marked_at' => now(),
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-                'device_info' => $request->input('device_info'),
-            ]);
+                if (
+                    $qrSession->class_session_id &&
+                    AttendanceRecord::where([
+                        'class_session_id' => $qrSession->class_session_id,
+                        'student_id' => auth()->id(),
+                    ])->exists()
+                ) {
+                    throw ValidationException::withMessages([
+                        'token' => 'You have already marked attendance for this class session.',
+                    ]);
+                }
 
-            // Step 7: Increment attendance count on QR session
-            $qrSession->increment('attendance_count');
+                if (AttendanceRecord::where([
+                    'qr_session_id' => $qrSession->id,
+                    'student_id' => auth()->id(),
+                ])->exists()) {
+                    throw ValidationException::withMessages([
+                        'token' => 'You have already marked attendance for this session.',
+                    ]);
+                }
 
-            // Step 8: Log action to audit log
-            AuditLog::logAction(
-                action: 'attendance_marked',
-                entityType: 'AttendanceRecord',
-                entityId: $record->id,
-                newValues: $record->toArray(),
-                ipAddress: $request->ip()
-            );
+                try {
+                    $deviceInfo = $request->input('device_info', []);
+
+                    if ($locationPayload) {
+                        $deviceInfo['location'] = $locationPayload;
+                    }
+
+                    $record = AttendanceRecord::create([
+                        'qr_session_id' => $qrSession->id,
+                        'course_id' => $qrSession->course_id,
+                        'class_session_id' => $qrSession->class_session_id,
+                        'enrollment_id' => $enrollment->id,
+                        'student_id' => auth()->id(),
+                        'marked_at' => now(),
+                        'ip_address' => $request->ip(),
+                        'user_agent' => $request->userAgent(),
+                        'device_info' => $deviceInfo,
+                    ]);
+                } catch (QueryException $e) {
+                    // Unique constraint safety net for race conditions.
+                    if ($e->getCode() === '23000') {
+                        throw ValidationException::withMessages([
+                            'token' => 'You have already marked attendance for this session.',
+                        ]);
+                    }
+
+                    throw $e;
+                }
+
+                $qrSession->increment('attendance_count');
+
+                AuditLog::logAction(
+                    action: 'attendance_marked',
+                    entityType: 'AttendanceRecord',
+                    entityId: $record->id,
+                    newValues: $record->toArray(),
+                    ipAddress: $request->ip()
+                );
+
+                return [
+                    'course_code' => $enrollment->course->code,
+                    'course_name' => $enrollment->course->name,
+                    'marked_at' => $record->marked_at->format('Y-m-d H:i:s'),
+                ];
+            });
 
             return response()->json([
                 'success' => true,
                 'message' => 'Attendance marked successfully!',
-                'data' => [
-                    'course_code' => $enrollment->course->code,
-                    'course_name' => $enrollment->course->name,
-                    'marked_at' => $record->marked_at->format('Y-m-d H:i:s'),
-                ],
+                'data' => $attendanceData,
             ], 200);
         } catch (ValidationException $e) {
             return response()->json([
@@ -114,13 +154,87 @@ class AttendanceController extends Controller
                 'message' => 'Attendance submission failed.',
                 'errors' => $e->errors(),
             ], 422);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Log::error('Attendance submission failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred. Please try again.',
-                'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function parseLocationPayload(?array $location): ?array
+    {
+        if (!$location || !array_key_exists('latitude', $location) || !array_key_exists('longitude', $location)) {
+            return null;
+        }
+
+        return [
+            'latitude' => (float) $location['latitude'],
+            'longitude' => (float) $location['longitude'],
+            'accuracy' => isset($location['accuracy']) ? (float) $location['accuracy'] : null,
+        ];
+    }
+
+    private function validateLocationRules(QRSession $qrSession, ?array $studentLocation): void
+    {
+        if (!config('attendance.location.enabled', true)) {
+            return;
+        }
+
+        $classSession = $qrSession->classSession;
+        if (!$classSession || !$classSession->requiresLocationCheck()) {
+            return;
+        }
+
+        if (!$studentLocation) {
+            if (config('attendance.location.allow_fallback_without_location', true)) {
+                return;
+            }
+
+            throw ValidationException::withMessages([
+                'location' => 'Location permission is required for this class session.',
+            ]);
+        }
+
+        if (!$classSession->hasReferenceLocation()) {
+            return;
+        }
+
+        $distanceMeters = $this->calculateDistanceMeters(
+            lat1: $classSession->expected_latitude,
+            lon1: $classSession->expected_longitude,
+            lat2: $studentLocation['latitude'],
+            lon2: $studentLocation['longitude']
+        );
+
+        $effectiveRadius = (float) $classSession->allowed_radius_meters
+            + (float) config('attendance.location.accuracy_tolerance_meters', 25)
+            + (float) ($studentLocation['accuracy'] ?? 0);
+
+        if ($distanceMeters > $effectiveRadius) {
+            throw ValidationException::withMessages([
+                'location' => 'You are outside the allowed class location range.',
+            ]);
+        }
+    }
+
+    private function calculateDistanceMeters(float $lat1, float $lon1, float $lat2, float $lon2): float
+    {
+        $earthRadius = 6371000.0;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+
+        $a = sin($dLat / 2) ** 2
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon / 2) ** 2;
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return $earthRadius * $c;
     }
 
     /**
@@ -147,6 +261,7 @@ class AttendanceController extends Controller
             'valid' => true,
             'course' => $qrSession->course->only(['id', 'code', 'name']),
             'time_remaining' => $qrSession->getTimeRemainingSeconds(),
+            'location_required' => $qrSession->classSession?->requiresLocationCheck() ?? false,
         ]);
     }
 

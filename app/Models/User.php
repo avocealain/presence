@@ -116,6 +116,21 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the dashboard route name for this user's role.
+     */
+    public function dashboardRouteName(): string
+    {
+        $role = $this->role ?: 'student';
+
+        return match ($role) {
+            'admin' => 'admin.dashboard',
+            'teacher' => 'teacher.dashboard',
+            'student' => 'student.dashboard',
+            default => 'dashboard',
+        };
+    }
+
+    /**
      * Scope: Only active users.
      */
     public function scopeActive($query)

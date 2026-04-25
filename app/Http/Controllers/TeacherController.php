@@ -3,8 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Models\ClassSession;
 use App\Models\Course;
 use App\Models\QRSession;
+use App\Services\QRCodeService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -74,20 +78,33 @@ class TeacherController extends Controller
             abort(403, 'Unauthorized');
         }
 
+        $course->loadCount('activeEnrollments');
+        $activeClassSession = $this->getActiveClassSession($course);
+
         // Get the latest active QR session if it exists
         $currentQRSession = $course->activeQRSessions()
+            ->with('classSession')
             ->latest()
             ->first();
 
         return Inertia::render('Teacher/GenerateQR', [
             'course' => $course,
+            'current_session' => $activeClassSession ? [
+                'id' => $activeClassSession->id,
+                'started_at' => $activeClassSession->started_at,
+                'ends_at' => $activeClassSession->ends_at,
+                'location_required' => $activeClassSession->location_required,
+                'allowed_radius_meters' => $activeClassSession->allowed_radius_meters,
+            ] : null,
             'current_qr' => $currentQRSession ? [
                 'id' => $currentQRSession->id,
                 'token' => $currentQRSession->token,
                 'expires_at' => $currentQRSession->expires_at,
                 'time_remaining' => $currentQRSession->getTimeRemainingSeconds(),
                 'attendance_count' => $currentQRSession->attendance_count,
-                'qr_code_path' => $currentQRSession->qr_code_path,
+                'qr_url' => $currentQRSession->getQRUrl(),
+                'class_session_id' => $currentQRSession->class_session_id,
+                'location_required' => $currentQRSession->classSession?->location_required ?? false,
             ] : null,
         ]);
     }
@@ -96,20 +113,40 @@ class TeacherController extends Controller
      * Generate a new QR code for a course.
      * POST /courses/{courseId}/qr
      */
-    public function generateQR(Course $course)
+    public function generateQR(Request $request, Course $course): JsonResponse
     {
         // Verify teacher owns this course
         if ($course->teacher_id !== auth()->id()) {
             abort(403, 'Unauthorized');
         }
 
+        $request->validate([
+            'location' => ['nullable', 'array'],
+            'location.latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'location.longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'location.accuracy' => ['nullable', 'numeric', 'min:0', 'max:10000'],
+        ]);
+
         try {
+            $locationPayload = $this->parseLocationPayload($request->input('location'));
+
+            // Ensure only one active QR session exists per course.
+            $course->activeQRSessions()->update(['is_active' => false]);
+
+            // Reuse existing active class session. Refresh QR should not create a new session.
+            $classSession = $this->getOrCreateActiveClassSession($course, $locationPayload);
+
             // Create QR session with 30-second validity
             $qrSession = QRSession::createForCourse(
                 course: $course,
                 teacher: auth()->user(),
-                validitySeconds: config('attendance.qr_validity_seconds', 30)
+                validitySeconds: config('attendance.qr.validity_seconds', 30),
+                classSession: $classSession
             );
+
+            // Generate QR code image
+            $qrCodeService = new QRCodeService();
+            $qrUrl = $qrCodeService->generate($qrSession);
 
             // Log action
             AuditLog::logAction(
@@ -118,20 +155,27 @@ class TeacherController extends Controller
                 entityId: $qrSession->id,
                 newValues: [
                     'course_id' => $course->id,
+                    'class_session_id' => $classSession->id,
                     'token' => $qrSession->token,
                     'expires_at' => $qrSession->expires_at,
+                    'qr_code_path' => $qrSession->qr_code_path,
+                    'location_required' => $classSession->location_required,
                 ]
             );
 
             return response()->json([
                 'success' => true,
-                'qr' => [
-                    'id' => $qrSession->id,
-                    'token' => $qrSession->token,
-                    'expires_at' => $qrSession->expires_at,
-                    'time_remaining' => $qrSession->getTimeRemainingSeconds(),
-                    'attendance_count' => 0,
-                ],
+                'qr_session_id' => $qrSession->id,
+                'token' => $qrSession->token,
+                'qr_url' => $qrUrl,
+                'expires_at' => $qrSession->expires_at,
+                'validity_seconds' => config('attendance.qr.validity_seconds', 30),
+                'expires_in' => $qrSession->getTimeRemainingSeconds(),
+                'attendance_count' => 0,
+                'class_session_id' => $classSession->id,
+                'class_session_ends_at' => $classSession->ends_at,
+                'location_required' => $classSession->location_required,
+                'location_radius_meters' => $classSession->allowed_radius_meters,
                 'message' => 'QR code generated successfully!',
             ]);
         } catch (\Exception $e) {
@@ -147,7 +191,7 @@ class TeacherController extends Controller
      * Refresh QR code (create new one).
      * POST /courses/{courseId}/qr/refresh
      */
-    public function refreshQR(Course $course)
+    public function refreshQR(Request $request, Course $course): JsonResponse
     {
         // Verify teacher owns this course
         if ($course->teacher_id !== auth()->id()) {
@@ -158,7 +202,33 @@ class TeacherController extends Controller
         $course->activeQRSessions()->update(['is_active' => false]);
 
         // Generate new QR session
-        return $this->generateQR($course);
+        return $this->generateQR($request, $course);
+    }
+
+    /**
+     * Stop the active QR session for a course.
+     * POST /courses/{courseId}/qr/stop
+     */
+    public function stopQR(Course $course): JsonResponse
+    {
+        if ($course->teacher_id !== auth()->id()) {
+            abort(403, 'Unauthorized');
+        }
+
+        $course->activeQRSessions()->update(['is_active' => false]);
+
+        $activeClassSession = $this->getActiveClassSession($course);
+        if ($activeClassSession) {
+            $activeClassSession->update([
+                'is_active' => false,
+                'ends_at' => now(),
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'QR session stopped and class session closed.',
+        ]);
     }
 
     /**
@@ -225,5 +295,67 @@ class TeacherController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    private function getActiveClassSession(Course $course): ?ClassSession
+    {
+        return $course->classSessions()
+            ->where('is_active', true)
+            ->where(function ($query) {
+                $query->whereNull('ends_at')->orWhere('ends_at', '>', now());
+            })
+            ->latest('started_at')
+            ->first();
+    }
+
+    private function getOrCreateActiveClassSession(Course $course, ?array $locationPayload): ClassSession
+    {
+        $activeClassSession = $this->getActiveClassSession($course);
+
+        // Allow enriching an active session with location when first available.
+        if ($activeClassSession && $locationPayload && config('attendance.location.enabled', true)) {
+            if (!$activeClassSession->location_required && !$activeClassSession->hasReferenceLocation()) {
+                $activeClassSession->update([
+                    'location_required' => true,
+                    'expected_latitude' => $locationPayload['latitude'],
+                    'expected_longitude' => $locationPayload['longitude'],
+                    'allowed_radius_meters' => config('attendance.location.default_radius_meters', 150),
+                ]);
+            }
+
+            return $activeClassSession->refresh();
+        }
+
+        if ($activeClassSession) {
+            return $activeClassSession;
+        }
+
+        $locationEnabled = config('attendance.location.enabled', true);
+        $hasLocation = $locationEnabled && $locationPayload !== null;
+
+        return ClassSession::create([
+            'course_id' => $course->id,
+            'created_by' => auth()->id(),
+            'started_at' => now(),
+            'ends_at' => now()->addMinutes(config('attendance.session.default_duration_minutes', 90)),
+            'is_active' => true,
+            'location_required' => $hasLocation,
+            'expected_latitude' => $hasLocation ? $locationPayload['latitude'] : null,
+            'expected_longitude' => $hasLocation ? $locationPayload['longitude'] : null,
+            'allowed_radius_meters' => config('attendance.location.default_radius_meters', 150),
+        ]);
+    }
+
+    private function parseLocationPayload(?array $location): ?array
+    {
+        if (!$location || !array_key_exists('latitude', $location) || !array_key_exists('longitude', $location)) {
+            return null;
+        }
+
+        return [
+            'latitude' => (float) $location['latitude'],
+            'longitude' => (float) $location['longitude'],
+            'accuracy' => isset($location['accuracy']) ? (float) $location['accuracy'] : null,
+        ];
     }
 }

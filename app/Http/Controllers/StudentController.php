@@ -109,25 +109,36 @@ class StudentController extends Controller
         $records = AttendanceRecord::where('student_id', auth()->id())
             ->with(['course', 'qrSession'])
             ->orderByDesc('marked_at')
-            ->paginate(20);
+            ->paginate(20)
+            ->withQueryString();
+
+        $recordItems = $records->getCollection()->map(function ($record) {
+            return [
+                'id' => $record->id,
+                'course_code' => $record->course->code,
+                'course_name' => $record->course->name,
+                'marked_at' => $record->marked_at->format('Y-m-d H:i:s'),
+                'hours_ago' => $record->getHoursAgo(),
+                'device' => $record->getDeviceString(),
+                'ip_address' => $record->ip_address,
+                'status' => 'Present',
+            ];
+        })->values();
 
         return Inertia::render('Student/AttendanceHistory', [
-            'records' => $records->map(function ($record) {
-                return [
-                    'id' => $record->id,
-                    'course_code' => $record->course->code,
-                    'course_name' => $record->course->name,
-                    'marked_at' => $record->marked_at->format('Y-m-d H:i:s'),
-                    'hours_ago' => $record->getHoursAgo(),
-                    'device' => $record->getDeviceString(),
-                    'ip_address' => $record->ip_address,
-                ];
-            }),
+            'records' => $recordItems,
+            'summary' => [
+                'total_records' => $records->total(),
+                'present_count' => $records->total(),
+                'attendance_rate' => $records->total() > 0 ? 100 : 0,
+            ],
             'pagination' => [
                 'current_page' => $records->currentPage(),
                 'total' => $records->total(),
                 'per_page' => $records->perPage(),
                 'last_page' => $records->lastPage(),
+                'prev_page_url' => $records->previousPageUrl(),
+                'next_page_url' => $records->nextPageUrl(),
             ],
         ]);
     }
@@ -141,15 +152,27 @@ class StudentController extends Controller
         $records = AttendanceRecord::where('student_id', auth()->id())
             ->with(['course'])
             ->orderByDesc('marked_at')
-            ->paginate(10);
+            ->paginate(10)
+            ->withQueryString();
 
         return response()->json([
-            'data' => $records->items(),
+            'data' => collect($records->items())->map(function ($record) {
+                return [
+                    'id' => $record->id,
+                    'course_id' => $record->course_id,
+                    'course_name' => $record->course->name ?? null,
+                    'course_code' => $record->course->code ?? null,
+                    'marked_at' => $record->marked_at,
+                    'status' => 'Present',
+                ];
+            })->values(),
             'pagination' => [
                 'current_page' => $records->currentPage(),
                 'total' => $records->total(),
                 'per_page' => $records->perPage(),
                 'last_page' => $records->lastPage(),
+                'prev_page_url' => $records->previousPageUrl(),
+                'next_page_url' => $records->nextPageUrl(),
             ],
         ]);
     }

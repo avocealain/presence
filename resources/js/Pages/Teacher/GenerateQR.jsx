@@ -1,56 +1,158 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import TeacherLayout from '@/Components/TeacherLayout';
-import { useForm } from '@inertiajs/react';
+import { useToast } from '@/Components/ToastContext';
 
-export default function GenerateQR({ auth, course }) {
-    const [qrCode, setQrCode] = useState(null);
-    const [timeRemaining, setTimeRemaining] = useState(30);
-    const [attendanceCount, setAttendanceCount] = useState(0);
-    const { post, processing } = useForm();
+export default function GenerateQR({ auth, course, current_qr, current_session }) {
+    const toast = useToast();
+
+    const initialTime = current_qr?.time_remaining ?? 0;
+    const initialQrUrl = current_qr?.qr_url ?? null;
+    const initialCount = current_qr?.attendance_count ?? 0;
+
+    const [qrCode, setQrCode] = useState(initialQrUrl);
+    const [timeRemaining, setTimeRemaining] = useState(initialTime);
+    const [validitySeconds, setValiditySeconds] = useState(initialTime > 0 ? initialTime : 30);
+    const [attendanceCount, setAttendanceCount] = useState(initialCount);
+    const [processingAction, setProcessingAction] = useState(false);
+    const [sessionMeta, setSessionMeta] = useState(current_session ?? null);
+    const [locationStatus, setLocationStatus] = useState(
+        current_session?.location_required ? 'enabled' : 'fallback',
+    );
+    const enrolledCount = course.active_enrollments_count ?? course.activeEnrollments?.length ?? 0;
+
+    const hasActiveCode = useMemo(() => Boolean(qrCode) && timeRemaining > 0, [qrCode, timeRemaining]);
 
     useEffect(() => {
-        if (timeRemaining <= 0) {
-            setQrCode(null);
+        if (!hasActiveCode) {
             return;
         }
 
         const interval = setInterval(() => {
-            setTimeRemaining(prev => prev - 1);
+            setTimeRemaining((prev) => Math.max(0, prev - 1));
         }, 1000);
 
         return () => clearInterval(interval);
+    }, [hasActiveCode]);
+
+    useEffect(() => {
+        if (timeRemaining === 0) {
+            setQrCode(null);
+        }
     }, [timeRemaining]);
 
-    const generateQR = () => {
-        setTimeRemaining(30);
-        post(`/courses/${course.id}/qr`, {
-            onSuccess: (response) => {
-                // Mock QR code generation - in real app, this would come from server
-                setQrCode(`data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==`);
-                setAttendanceCount(0);
-            }
+    const extractErrorMessage = (error, fallbackMessage) => {
+        return (
+            error?.response?.data?.message ||
+            error?.message ||
+            fallbackMessage
+        );
+    };
+
+    const captureTeacherLocation = async () => {
+        if (!navigator.geolocation) {
+            setLocationStatus('unsupported');
+            toast.warning('Geolocation is not supported in this browser. Session fallback mode will be used.');
+            return null;
+        }
+
+        return await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    setLocationStatus('enabled');
+                    resolve({
+                        latitude: Number(position.coords.latitude),
+                        longitude: Number(position.coords.longitude),
+                        accuracy: Number(position.coords.accuracy || 0),
+                    });
+                },
+                () => {
+                    setLocationStatus('fallback');
+                    toast.warning('Location permission unavailable. Session fallback mode will be used.');
+                    resolve(null);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 30000,
+                },
+            );
         });
     };
 
-    const refreshQR = () => {
-        post(`/courses/${course.id}/qr/refresh`, {
-            onSuccess: () => {
-                setTimeRemaining(30);
-                setAttendanceCount(attendanceCount + 1);
+    const requestQRSession = async (endpoint, successMessage, withLocation = false) => {
+        setProcessingAction(true);
+
+        try {
+            const requestPayload = {};
+            if (withLocation) {
+                const teacherLocation = await captureTeacherLocation();
+                if (teacherLocation) {
+                    requestPayload.location = teacherLocation;
+                }
             }
-        });
+
+            const response = await window.axios.post(endpoint, requestPayload);
+            const responsePayload = response?.data || {};
+
+            if (!responsePayload.success) {
+                throw new Error(responsePayload.message || 'QR request failed.');
+            }
+
+            setQrCode(responsePayload.qr_url || null);
+            setTimeRemaining(responsePayload.expires_in ?? responsePayload.validity_seconds ?? 30);
+            setValiditySeconds(responsePayload.validity_seconds ?? 30);
+            setAttendanceCount(responsePayload.attendance_count ?? 0);
+            setSessionMeta({
+                id: responsePayload.class_session_id,
+                ends_at: responsePayload.class_session_ends_at,
+                location_required: responsePayload.location_required,
+                allowed_radius_meters: responsePayload.location_radius_meters,
+            });
+            setLocationStatus(responsePayload.location_required ? 'enabled' : 'fallback');
+
+            toast.success(successMessage);
+        } catch (error) {
+            toast.error(extractErrorMessage(error, 'Failed to process QR request.'));
+        } finally {
+            setProcessingAction(false);
+        }
+    };
+
+    const generateQR = async () => {
+        toast.info('Generating QR code...');
+        await requestQRSession(`/courses/${course.id}/qr`, 'QR code generated successfully.', true);
+    };
+
+    const refreshQR = async () => {
+        toast.info('Refreshing QR code...');
+        await requestQRSession(`/courses/${course.id}/qr/refresh`, 'New QR code generated.', false);
+    };
+
+    const stopQR = async () => {
+        setProcessingAction(true);
+
+        try {
+            await window.axios.post(`/courses/${course.id}/qr/stop`);
+            setQrCode(null);
+            setTimeRemaining(0);
+            setSessionMeta(null);
+            toast.info('QR session stopped.');
+        } catch (error) {
+            toast.error(extractErrorMessage(error, 'Failed to stop QR session.'));
+        } finally {
+            setProcessingAction(false);
+        }
     };
 
     return (
         <TeacherLayout user={auth.user} title="Generate QR Code">
             <div className="space-y-6">
-                {/* Course Header */}
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="rounded-lg border border-gray-200 bg-white p-6">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-sm font-semibold text-green-600 uppercase">{course.code}</p>
+                            <p className="text-sm font-semibold uppercase text-green-600">{course.code}</p>
                             <h2 className="text-2xl font-bold text-gray-900">{course.name}</h2>
-                            <p className="text-gray-600 mt-1">{course.activeEnrollments?.length || 0} students enrolled</p>
+                            <p className="mt-1 text-gray-600">{enrolledCount} students enrolled</p>
                         </div>
                         <div className="text-right">
                             <p className="text-sm text-gray-600">Current Session</p>
@@ -59,41 +161,44 @@ export default function GenerateQR({ auth, course }) {
                     </div>
                 </div>
 
-                {/* QR Code Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* QR Display */}
-                    <div className="bg-white rounded-lg border border-gray-200 p-8">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <div className="rounded-lg border border-gray-200 bg-white p-8">
                         <div className="flex flex-col items-center justify-center space-y-6">
-                            {qrCode ? (
+                            {hasActiveCode ? (
                                 <>
-                                    <div className="w-full max-w-xs aspect-square bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
-                                        <img src={qrCode} alt="QR Code" className="w-full h-full object-contain" />
+                                    <div className="aspect-square w-full max-w-xs rounded-lg border-2 border-dashed border-gray-300 bg-gray-100">
+                                        <img src={qrCode} alt="QR Code" className="h-full w-full object-contain" />
                                     </div>
                                     <div className="text-center">
-                                        <p className="text-gray-600 mb-2">Time Remaining</p>
+                                        <p className="mb-2 text-gray-600">Time Remaining</p>
                                         <p className={`text-4xl font-bold ${timeRemaining > 10 ? 'text-green-600' : 'text-red-600'}`}>
                                             {timeRemaining}s
                                         </p>
                                     </div>
                                     <div className="w-full">
-                                        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
                                             <div
-                                                className={`h-full transition-all duration-1000 ${timeRemaining > 10 ? 'bg-green-600' : 'bg-red-600'}`}
-                                                style={{ width: `${(timeRemaining / 30) * 100}%` }}
+                                                className={`h-full transition-all duration-500 ${timeRemaining > 10 ? 'bg-green-600' : 'bg-red-600'}`}
+                                                style={{
+                                                    width: `${Math.max(0, Math.min(100, (timeRemaining / Math.max(1, validitySeconds)) * 100))}%`,
+                                                }}
                                             />
                                         </div>
                                     </div>
-                                    <div className="flex gap-3 w-full">
+                                    <div className="flex w-full gap-3">
                                         <button
                                             onClick={refreshQR}
-                                            disabled={processing}
-                                            className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
+                                            disabled={processingAction}
+                                            className={`flex-1 rounded-lg bg-green-600 px-4 py-3 font-medium text-white transition hover:bg-green-700 ${
+                                                processingAction ? 'cursor-not-allowed opacity-50' : ''
+                                            }`}
                                         >
-                                            Refresh QR
+                                            {processingAction ? 'Please wait...' : 'Refresh QR'}
                                         </button>
                                         <button
-                                            onClick={() => setQrCode(null)}
-                                            className="flex-1 px-4 py-3 bg-red-100 text-red-600 rounded-lg font-medium hover:bg-red-200 transition-colors"
+                                            onClick={stopQR}
+                                            disabled={processingAction}
+                                            className="flex-1 rounded-lg bg-red-100 px-4 py-3 font-medium text-red-600 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             Stop
                                         </button>
@@ -101,64 +206,85 @@ export default function GenerateQR({ auth, course }) {
                                 </>
                             ) : (
                                 <>
-                                    <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">
-                                        <svg className="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-green-100">
+                                        <svg className="h-12 w-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                         </svg>
                                     </div>
                                     <div className="text-center">
-                                        <h3 className="text-lg font-bold text-gray-900 mb-2">Ready to Take Attendance?</h3>
-                                        <p className="text-gray-600 mb-6">Click the button below to generate a QR code for your students to scan</p>
+                                        <h3 className="mb-2 text-lg font-bold text-gray-900">Ready to take attendance?</h3>
+                                        <p className="mb-6 text-gray-600">Generate a QR code so students can scan and mark attendance.</p>
                                     </div>
                                     <button
                                         onClick={generateQR}
-                                        disabled={processing}
-                                        className="w-full px-6 py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors disabled:opacity-50"
+                                        disabled={processingAction}
+                                        className={`w-full rounded-lg bg-green-600 px-6 py-3 font-bold text-white transition hover:bg-green-700 ${
+                                            processingAction ? 'cursor-not-allowed opacity-50' : ''
+                                        }`}
                                     >
-                                        Generate QR Code
+                                        {processingAction ? 'Generating...' : 'Generate QR Code'}
                                     </button>
                                 </>
                             )}
                         </div>
                     </div>
 
-                    {/* Live Stats */}
                     <div className="space-y-4">
-                        {/* Attendance Live Count */}
-                        <div className="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg border border-green-200 p-6">
-                            <p className="text-gray-600 mb-2">Students Present</p>
+                        <div className="rounded-lg border border-green-200 bg-gradient-to-br from-green-50 to-blue-50 p-6">
+                            <p className="mb-2 text-gray-600">Students Present</p>
                             <div className="flex items-baseline gap-2">
                                 <p className="text-5xl font-bold text-green-600">{attendanceCount}</p>
-                                <p className="text-gray-600">of {course.activeEnrollments?.length || 0}</p>
+                                <p className="text-gray-600">of {enrolledCount}</p>
                             </div>
-                            <div className="mt-4 w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                            <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-gray-200">
                                 <div
                                     className="h-full bg-green-600 transition-all"
-                                    style={{ width: `${(attendanceCount / (course.activeEnrollments?.length || 1)) * 100}%` }}
+                                    style={{
+                                        width: `${Math.max(
+                                            0,
+                                            Math.min(
+                                                100,
+                                                ((attendanceCount || 0) / Math.max(1, enrolledCount)) * 100,
+                                            ),
+                                        )}%`,
+                                    }}
                                 />
                             </div>
-                            <p className="text-sm text-gray-600 mt-2">
-                                {((attendanceCount / (course.activeEnrollments?.length || 1)) * 100).toFixed(1)}% attendance rate
+                            <p className="mt-2 text-sm text-gray-600">
+                                {(((attendanceCount || 0) / Math.max(1, enrolledCount)) * 100).toFixed(1)}% attendance rate
                             </p>
                         </div>
 
-                        {/* Tips */}
-                        <div className="bg-blue-50 rounded-lg border border-blue-200 p-6">
-                            <h4 className="font-bold text-gray-900 mb-3">📌 Tips</h4>
+                        <div className="rounded-lg border border-blue-200 bg-blue-50 p-6">
+                            <h4 className="mb-3 font-bold text-gray-900">Tips</h4>
                             <ul className="space-y-2 text-sm text-gray-700">
-                                <li>✓ Each QR code expires after 30 seconds</li>
-                                <li>✓ Students can only scan once per QR code</li>
-                                <li>✓ Click "Refresh QR" to generate a new code</li>
-                                <li>✓ Attendance is marked in real-time</li>
+                                <li>Each QR code expires quickly for anti-fraud protection.</li>
+                                <li>A student can scan only once per class session.</li>
+                                <li>Use "Refresh QR" to issue a new code immediately.</li>
+                                <li>Use "Stop" to close the current session.</li>
                             </ul>
                         </div>
 
-                        {/* Actions */}
+                        <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-700">
+                            <p className="font-semibold text-gray-900">Session Controls</p>
+                            <p className="mt-2">
+                                {sessionMeta
+                                    ? `Active session #${sessionMeta.id} - ${sessionMeta.location_required ? 'Location verification enabled' : 'Fallback mode'}`
+                                    : 'No active class session'}
+                            </p>
+                            {sessionMeta?.ends_at && (
+                                <p className="mt-1 text-xs text-gray-500">Session ends at: {new Date(sessionMeta.ends_at).toLocaleString()}</p>
+                            )}
+                            <p className="mt-1 text-xs text-gray-500">
+                                Location status: {locationStatus === 'enabled' ? 'Enabled' : locationStatus === 'unsupported' ? 'Unsupported browser' : 'Fallback'}
+                            </p>
+                        </div>
+
                         <div className="space-y-2">
-                            <a href={`/courses/${course.id}/attendance`} className="block w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-medium text-center hover:bg-blue-700 transition-colors">
+                            <a href={`/courses/${course.id}/attendance`} className="block w-full rounded-lg bg-blue-600 px-4 py-3 text-center font-medium text-white transition hover:bg-blue-700">
                                 View Attendance Report
                             </a>
-                            <a href="/teacher/courses" className="block w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium text-center hover:bg-gray-200 transition-colors">
+                            <a href="/teacher/courses" className="block w-full rounded-lg bg-gray-100 px-4 py-3 text-center font-medium text-gray-700 transition hover:bg-gray-200">
                                 Back to Courses
                             </a>
                         </div>

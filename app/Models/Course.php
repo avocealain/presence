@@ -76,6 +76,26 @@ class Course extends Model
     }
 
     /**
+     * Get all class sessions for this course.
+     */
+    public function classSessions(): HasMany
+    {
+        return $this->hasMany(ClassSession::class);
+    }
+
+    /**
+     * Get active class sessions for this course.
+     */
+    public function activeClassSessions(): HasMany
+    {
+        return $this->classSessions()
+            ->where('is_active', true)
+            ->where(function ($query) {
+                $query->whereNull('ends_at')->orWhere('ends_at', '>', now());
+            });
+    }
+
+    /**
      * Get all attendance records for this course.
      */
     public function attendanceRecords(): HasMany
@@ -129,11 +149,23 @@ class Course extends Model
     public function getAttendanceSummary(): array
     {
         $enrollments = $this->activeEnrollments()->with('student')->get();
-        $totalSessions = $this->qrSessions()->count();
+        $totalSessions = $this->classSessions()->count();
+
+        // Backward compatibility for legacy data before class sessions existed.
+        if ($totalSessions === 0) {
+            $totalSessions = $this->qrSessions()->count();
+        }
 
         return $enrollments->map(function (CourseEnrollment $enrollment) use ($totalSessions) {
-            $attended = AttendanceRecord::where('student_id', $enrollment->student_id)
+            $records = AttendanceRecord::where('student_id', $enrollment->student_id)
                 ->where('course_id', $this->id)
+                ->get(['class_session_id', 'qr_session_id']);
+
+            $attended = $records
+                ->map(fn (AttendanceRecord $record) => $record->class_session_id
+                    ? 'session_' . $record->class_session_id
+                    : 'qr_' . $record->qr_session_id)
+                ->unique()
                 ->count();
 
             return [

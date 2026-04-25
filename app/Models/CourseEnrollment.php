@@ -59,8 +59,19 @@ class CourseEnrollment extends Model
      */
     public function getAttendanceStats(): array
     {
-        $totalSessions = $this->course->qrSessions()->count();
-        $attended = $this->attendanceRecords()->count();
+        $totalSessions = $this->course->classSessions()->count();
+
+        if ($totalSessions === 0) {
+            $totalSessions = $this->course->qrSessions()->count();
+        }
+
+        $attended = $this->attendanceRecords()
+            ->get(['class_session_id', 'qr_session_id'])
+            ->map(fn (AttendanceRecord $record) => $record->class_session_id
+                ? 'session_' . $record->class_session_id
+                : 'qr_' . $record->qr_session_id)
+            ->unique()
+            ->count();
 
         return [
             'attended' => $attended,

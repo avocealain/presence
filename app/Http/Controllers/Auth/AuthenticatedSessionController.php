@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -31,15 +32,17 @@ class AuthenticatedSessionController extends Controller
     {
         $request->authenticate();
 
+        if (! $request->user()->isActive()) {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'email' => 'Your account is currently inactive. Please contact your administrator.',
+            ]);
+        }
+
         $request->session()->regenerate();
 
-        // Redirect based on user role
-        return match($request->user()->role) {
-            'admin' => redirect()->intended(route('admin.dashboard', absolute: false)),
-            'teacher' => redirect()->intended(route('teacher.dashboard', absolute: false)),
-            'student' => redirect()->intended(route('student.dashboard', absolute: false)),
-            default => redirect()->intended(route('dashboard', absolute: false)),
-        };
+        return redirect()->intended(route($request->user()->dashboardRouteName(), absolute: false));
     }
 
     /**

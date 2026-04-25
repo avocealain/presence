@@ -9,9 +9,20 @@ export default function AuthenticatedLayout({ header, children }) {
     const user = usePage().props.auth.user;
     const [showingNavigationDropdown, setShowingNavigationDropdown] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const dashboardHref = user?.role === 'admin'
+        ? route('admin.dashboard')
+        : user?.role === 'teacher'
+            ? route('teacher.dashboard')
+            : user?.role === 'student'
+                ? route('student.dashboard')
+                : route('dashboard');
 
     const navigationItems = [
-        { name: 'Dashboard', href: route('dashboard'), current: route().current('dashboard') },
+        {
+            name: 'Dashboard',
+            href: dashboardHref,
+            current: route().current('dashboard') || route().current(`${user?.role}.dashboard`),
+        },
     ];
 
     return (

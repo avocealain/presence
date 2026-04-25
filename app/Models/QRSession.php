@@ -14,6 +14,7 @@ class QRSession extends Model
 
     protected $fillable = [
         'course_id',
+        'class_session_id',
         'token',
         'qr_code_path',
         'started_at',
@@ -35,6 +36,14 @@ class QRSession extends Model
     public function course(): BelongsTo
     {
         return $this->belongsTo(Course::class);
+    }
+
+    /**
+     * Get the class session this QR refresh belongs to.
+     */
+    public function classSession(): BelongsTo
+    {
+        return $this->belongsTo(ClassSession::class);
     }
 
     /**
@@ -103,12 +112,18 @@ class QRSession extends Model
     /**
      * Create a new QR session for a course.
      */
-    public static function createForCourse(Course $course, User $teacher, int $validitySeconds = 30): self
+    public static function createForCourse(
+        Course $course,
+        User $teacher,
+        int $validitySeconds = 30,
+        ?ClassSession $classSession = null
+    ): self
     {
         $token = self::generateToken();
 
         return self::create([
             'course_id' => $course->id,
+            'class_session_id' => $classSession?->id,
             'token' => $token,
             'started_at' => now(),
             'expires_at' => now()->addSeconds($validitySeconds),
@@ -122,7 +137,7 @@ class QRSession extends Model
      */
     public function getTimeRemainingSeconds(): int
     {
-        $remaining = $this->expires_at->diffInSeconds(now(), false);
+        $remaining = now()->diffInSeconds($this->expires_at, false);
 
         return max(0, $remaining);
     }
@@ -133,5 +148,35 @@ class QRSession extends Model
     public function canAcceptAttendance(): bool
     {
         return $this->is_active && $this->getTimeRemainingSeconds() > 0;
+    }
+
+    /**
+     * Increment the attendance count for this QR session.
+     */
+    public function incrementAttendanceCount(): void
+    {
+        $this->increment('attendance_count');
+    }
+
+    /**
+     * Deactivate if expired, otherwise keep active.
+     */
+    public function deactivateIfExpired(): void
+    {
+        if ($this->isExpired()) {
+            $this->deactivate();
+        }
+    }
+
+    /**
+     * Get the public URL to the QR code image.
+     */
+    public function getQRUrl(): ?string
+    {
+        if (!$this->qr_code_path) {
+            return null;
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->url($this->qr_code_path);
     }
 }

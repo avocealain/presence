@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import AdminLayout from '@/Components/AdminLayout';
+import { Link } from '@inertiajs/react';
 
 export default function AdminUsers({ auth, users }) {
     const [searchTerm, setSearchTerm] = useState('');
@@ -60,8 +61,12 @@ export default function AdminUsers({ auth, users }) {
                             </select>
                         </div>
                         <div className="flex items-end">
-                            <button className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors">
-                                Add User
+                            <button
+                                type="button"
+                                disabled
+                                className="w-full cursor-not-allowed rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-600"
+                            >
+                                User creation via seed/admin API
                             </button>
                         </div>
                     </div>
@@ -125,8 +130,21 @@ export default function AdminUsers({ auth, users }) {
                     <div className="flex items-center justify-between text-sm text-gray-600">
                         <span>Page {users.current_page} of {users.last_page}</span>
                         <div className="flex gap-2">
-                            <button className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50">Previous</button>
-                            <button className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50">Next</button>
+                            {users.prev_page_url ? (
+                                <Link href={users.prev_page_url} className="rounded-lg border border-gray-300 px-3 py-1 hover:bg-gray-50">
+                                    Previous
+                                </Link>
+                            ) : (
+                                <span className="cursor-not-allowed rounded-lg border border-gray-200 px-3 py-1 text-gray-400">Previous</span>
+                            )}
+
+                            {users.next_page_url ? (
+                                <Link href={users.next_page_url} className="rounded-lg border border-gray-300 px-3 py-1 hover:bg-gray-50">
+                                    Next
+                                </Link>
+                            ) : (
+                                <span className="cursor-not-allowed rounded-lg border border-gray-200 px-3 py-1 text-gray-400">Next</span>
+                            )}
                         </div>
                     </div>
                 )}

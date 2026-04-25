@@ -13,6 +13,7 @@ class AttendanceRecord extends Model
     protected $fillable = [
         'qr_session_id',
         'course_id',
+        'class_session_id',
         'enrollment_id',
         'student_id',
         'marked_at',
@@ -48,6 +49,14 @@ class AttendanceRecord extends Model
     public function course(): BelongsTo
     {
         return $this->belongsTo(Course::class);
+    }
+
+    /**
+     * Get class session for this attendance.
+     */
+    public function classSession(): BelongsTo
+    {
+        return $this->belongsTo(ClassSession::class);
     }
 
     /**

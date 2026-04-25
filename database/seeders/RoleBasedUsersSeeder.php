@@ -4,16 +4,16 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class RoleBasedUsersSeeder extends Seeder
 {
     public function run(): void
     {
         // Create admin user
-        User::create([
+        User::updateOrCreate(['email' => 'admin@example.com'], [
             'name' => 'Admin User',
-            'email' => 'admin@example.com',
-            'password' => bcrypt('password'),
+            'password' => Hash::make('password'),
             'role' => 'admin',
             'department' => 'Administration',
             'is_active' => true,
@@ -21,10 +21,9 @@ class RoleBasedUsersSeeder extends Seeder
         ]);
 
         // Create teacher user
-        User::create([
+        User::updateOrCreate(['email' => 'teacher@example.com'], [
             'name' => 'Teacher User',
-            'email' => 'teacher@example.com',
-            'password' => bcrypt('password'),
+            'password' => Hash::make('password'),
             'role' => 'teacher',
             'department' => 'Computer Science',
             'is_active' => true,
@@ -32,10 +31,9 @@ class RoleBasedUsersSeeder extends Seeder
         ]);
 
         // Create student user
-        User::create([
+        User::updateOrCreate(['email' => 'student@example.com'], [
             'name' => 'Student User',
-            'email' => 'student@example.com',
-            'password' => bcrypt('password'),
+            'password' => Hash::make('password'),
             'role' => 'student',
             'department' => 'Computer Science',
             'is_active' => true,
@@ -44,10 +42,9 @@ class RoleBasedUsersSeeder extends Seeder
 
         // Create additional test students
         for ($i = 2; $i <= 5; $i++) {
-            User::create([
+            User::updateOrCreate(['email' => "student$i@example.com"], [
                 'name' => "Student $i",
-                'email' => "student$i@example.com",
-                'password' => bcrypt('password'),
+                'password' => Hash::make('password'),
                 'role' => 'student',
                 'department' => 'Computer Science',
                 'is_active' => true,
