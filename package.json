@@ -3,8 +3,10 @@
     "private": true,
     "type": "module",
     "scripts": {
+        "dev": "vite dev",
         "build": "vite build",
-        "dev": "vite"
+        "production": "vite build"
+        
     },
     "devDependencies": {
         "@headlessui/react": "^2.0.0",
