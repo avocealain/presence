@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\URL; // Importation nécessaire
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -20,6 +21,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Force le HTTPS si l'application est en production
+        if (config('app.env') === 'production') {
+            URL::forceScheme('https');
+        }
+
         Vite::prefetch(concurrency: 3);
     }
 }
