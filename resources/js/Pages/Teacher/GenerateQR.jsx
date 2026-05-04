@@ -5,13 +5,22 @@ import { useToast } from '@/Components/ToastContext';
 export default function GenerateQR({ auth, course, current_qr, current_session }) {
     const toast = useToast();
 
+    const ensureAbsoluteHttpsUrl = (url) => {
+        if (!url) return null;
+        if (url.startsWith('https://')) return url;
+        if (url.startsWith('http://')) return url.replace(/^http:/, 'https:');
+        if (url.startsWith('//')) return `https:${url}`;
+        if (url.startsWith('/')) return `${window.location.origin}${url}`;
+        return url;
+    };
+
     const initialTime = current_qr?.time_remaining ?? 0;
-    const initialQrUrl = current_qr?.qr_url ?? null;
+    const initialQrUrl = ensureAbsoluteHttpsUrl(current_qr?.qr_url ?? null);
     const initialCount = current_qr?.attendance_count ?? 0;
 
     const [qrCode, setQrCode] = useState(initialQrUrl);
     const [timeRemaining, setTimeRemaining] = useState(initialTime);
-    const [validitySeconds, setValiditySeconds] = useState(initialTime > 0 ? initialTime : 30);
+    const [validitySeconds, setValiditySeconds] = useState(initialTime > 0 ? initialTime : 300);
     const [attendanceCount, setAttendanceCount] = useState(initialCount);
     const [processingAction, setProcessingAction] = useState(false);
     const [sessionMeta, setSessionMeta] = useState(current_session ?? null);
@@ -98,9 +107,9 @@ export default function GenerateQR({ auth, course, current_qr, current_session }
                 throw new Error(responsePayload.message || 'QR request failed.');
             }
 
-            setQrCode(responsePayload.qr_url || null);
-            setTimeRemaining(responsePayload.expires_in ?? responsePayload.validity_seconds ?? 30);
-            setValiditySeconds(responsePayload.validity_seconds ?? 30);
+            setQrCode(ensureAbsoluteHttpsUrl(responsePayload.qr_url));
+            setTimeRemaining(responsePayload.expires_in ?? responsePayload.validity_seconds ?? 300);
+            setValiditySeconds(responsePayload.validity_seconds ?? 300);
             setAttendanceCount(responsePayload.attendance_count ?? 0);
             setSessionMeta({
                 id: responsePayload.class_session_id,

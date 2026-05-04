@@ -41,10 +41,10 @@ class RoleBasedUsersSeeder extends Seeder
         ]);
 
         // Create additional test students
-        for ($i = 2; $i <= 5; $i++) {
+        for ($i = 2; $i <= 10; $i++) {
             User::updateOrCreate(['email' => "student$i@example.com"], [
                 'name' => "Student $i",
-                'password' => Hash::make('password'),
+                'password' => Hash::make("password$i#"),
                 'role' => 'student',
                 'department' => 'Computer Science',
                 'is_active' => true,
