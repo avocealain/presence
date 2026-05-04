@@ -128,13 +128,18 @@ class TeacherController extends Controller
         ]);
 
         try {
+            Log::info('Starting QR generation', ['course_id' => $course->id]);
+
             $locationPayload = $this->parseLocationPayload($request->input('location'));
+            Log::info('Location payload parsed');
 
             // Ensure only one active QR session exists per course.
             $course->activeQRSessions()->update(['is_active' => false]);
+            Log::info('Old QR sessions deactivated');
 
             // Reuse existing active class session. Refresh QR should not create a new session.
             $classSession = $this->getOrCreateActiveClassSession($course, $locationPayload);
+            Log::info('Class session ready', ['session_id' => $classSession->id ?? null]);
 
             // Create QR session with 5-minute validity
             $qrSession = QRSession::createForCourse(
@@ -143,10 +148,12 @@ class TeacherController extends Controller
                 validitySeconds: config('attendance.qr.validity_seconds', 300),
                 classSession: $classSession
             );
+            Log::info('QR session created', ['qr_session_id' => $qrSession->id]);
 
             // Generate QR code image
             $qrCodeService = new QRCodeService();
             $qrUrl = $qrCodeService->generate($qrSession);
+            Log::info('QR code generated', ['url' => $qrUrl]);
 
             // Log action
             AuditLog::logAction(
@@ -178,8 +185,8 @@ class TeacherController extends Controller
                 'location_radius_meters' => $classSession->allowed_radius_meters,
                 'message' => 'QR code generated successfully!',
             ]);
-        } catch (\Exception $e) {
-            Log::error('QR code generation error', [
+        } catch (\Throwable $e) {
+            Log::error('QR code generation failed', [
                 'course_id' => $course->id,
                 'error_message' => $e->getMessage(),
                 'error_class' => get_class($e),
@@ -187,9 +194,15 @@ class TeacherController extends Controller
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate QR code: ' . $e->getMessage(),
+                'error_details' => [
+                    'class' => get_class($e),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ],
             ], 500);
         }
     }
