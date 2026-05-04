@@ -71,25 +71,39 @@ export default function GenerateQR({ auth, course, current_qr, current_session }
             return null;
         }
 
+        toast.info('Requesting location permission...');
+
         return await new Promise((resolve) => {
+            const timeoutId = setTimeout(() => {
+                setLocationStatus('fallback');
+                toast.warning('Location request timed out. Using fallback mode.');
+                resolve(null);
+            }, 25000);
+
             navigator.geolocation.getCurrentPosition(
                 (position) => {
+                    clearTimeout(timeoutId);
                     setLocationStatus('enabled');
+                    toast.success('Location captured successfully.');
                     resolve({
                         latitude: Number(position.coords.latitude),
                         longitude: Number(position.coords.longitude),
                         accuracy: Number(position.coords.accuracy || 0),
                     });
                 },
-                () => {
+                (error) => {
+                    clearTimeout(timeoutId);
                     setLocationStatus('fallback');
-                    toast.warning('Location permission unavailable. Session fallback mode will be used.');
+                    const errorMsg = error.code === error.PERMISSION_DENIED
+                        ? 'Location permission denied. Using fallback mode.'
+                        : 'Could not retrieve location. Using fallback mode.';
+                    toast.warning(errorMsg);
                     resolve(null);
                 },
                 {
                     enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 30000,
+                    timeout: 20000,
+                    maximumAge: 0,
                 },
             );
         });

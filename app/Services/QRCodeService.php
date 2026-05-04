@@ -65,8 +65,9 @@ class QRCodeService
                 'qr_code_path' => $filename,
             ]);
 
-            // Return public URL
-            return Storage::disk('public')->url($filename);
+            // Return public URL - ensure it's absolute and HTTPS
+            $url = Storage::disk('public')->url($filename);
+            return $this->ensureAbsoluteHttpsUrl($url);
         } catch (Exception $e) {
             Log::error('QR code generation failed', [
                 'session_id' => $session->id,
@@ -74,6 +75,35 @@ class QRCodeService
             ]);
             throw new Exception('Failed to generate QR code: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Ensure URL is absolute and HTTPS
+     */
+    private function ensureAbsoluteHttpsUrl(string $url): string
+    {
+        if (empty($url)) {
+            return '';
+        }
+
+        if (str_starts_with($url, 'https://')) {
+            return $url;
+        }
+
+        if (str_starts_with($url, 'http://')) {
+            return str_replace('http://', 'https://', $url);
+        }
+
+        if (str_starts_with($url, '//')) {
+            return 'https:' . $url;
+        }
+
+        if (str_starts_with($url, '/')) {
+            $appUrl = rtrim(config('app.url', 'https://localhost'), '/');
+            return $appUrl . $url;
+        }
+
+        return $url;
     }
 
     /**
