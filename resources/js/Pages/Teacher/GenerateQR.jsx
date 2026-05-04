@@ -121,7 +121,9 @@ export default function GenerateQR({ auth, course, current_qr, current_session }
                 }
             }
 
-            const response = await window.axios.post(endpoint, requestPayload);
+            const response = await window.axios.post(endpoint, requestPayload, {
+                timeout: 30000,
+            });
             const responsePayload = response?.data || {};
 
             if (!responsePayload.success) {

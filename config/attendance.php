@@ -20,14 +20,14 @@ return [
         // Image format: 'png' or 'svg'
         'image_format' => 'png',
 
-        // Size of generated PNG images (pixels)
-        'size' => 300,
+        // Size of generated PNG images (pixels) - reduced for faster generation
+        'size' => 200,
 
         // Margin around QR code (quiet zone)
-        'margin' => 2,
+        'margin' => 1,
 
         // Error correction level: 'low', 'medium', 'quartile', 'high'
-        'error_correction' => 'high',
+        'error_correction' => 'medium',
 
         // Cache QR images for this duration (seconds, 0 = no cache)
         'cache_duration' => 3600,
