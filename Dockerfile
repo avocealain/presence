@@ -17,6 +17,9 @@ COPY --from=build-stage /app/public/build ./public/build
 # Installation des dépendances PHP
 RUN composer install --no-dev --optimize-autoloader
 
+# Create storage symlink for public files
+RUN php artisan storage:link
+
 # Permissions pour Laravel
 RUN chown -R application:application /app/storage /app/bootstrap/cache
 

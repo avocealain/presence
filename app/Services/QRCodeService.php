@@ -86,24 +86,30 @@ class QRCodeService
             return '';
         }
 
+        // Already HTTPS
         if (str_starts_with($url, 'https://')) {
             return $url;
         }
 
+        // Convert HTTP to HTTPS
         if (str_starts_with($url, 'http://')) {
             return str_replace('http://', 'https://', $url);
         }
 
+        // Protocol-relative URL
         if (str_starts_with($url, '//')) {
             return 'https:' . $url;
         }
 
+        // Relative path - prepend APP_URL and /storage
         if (str_starts_with($url, '/')) {
             $appUrl = rtrim(config('app.url', 'https://localhost'), '/');
-            return $appUrl . $url;
+            return $appUrl . '/storage' . $url;
         }
 
-        return $url;
+        // If it's just a relative path without leading slash, construct full URL
+        $appUrl = rtrim(config('app.url', 'https://localhost'), '/');
+        return $appUrl . '/storage/' . $url;
     }
 
     /**

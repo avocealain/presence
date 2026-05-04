@@ -179,10 +179,17 @@ class TeacherController extends Controller
                 'message' => 'QR code generated successfully!',
             ]);
         } catch (\Exception $e) {
+            Log::error('QR code generation error', [
+                'course_id' => $course->id,
+                'error_message' => $e->getMessage(),
+                'error_class' => get_class($e),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to generate QR code.',
-                'error' => $e->getMessage(),
+                'message' => 'Failed to generate QR code: ' . $e->getMessage(),
             ], 500);
         }
     }
