@@ -128,35 +128,34 @@ class TeacherController extends Controller
         ]);
 
         try {
-            Log::info('=== QR Generation Started ===', ['course_id' => $course->id]);
+            Log::info('Starting QR generation', ['course_id' => $course->id]);
 
-            Log::info('Step 1: Parsing location payload');
             $locationPayload = $this->parseLocationPayload($request->input('location'));
-            Log::info('Step 1 OK', ['has_location' => $locationPayload !== null]);
+            Log::info('Location payload parsed');
 
-            Log::info('Step 2: Deactivating old QR sessions');
+            // Ensure only one active QR session exists per course.
             $course->activeQRSessions()->update(['is_active' => false]);
-            Log::info('Step 2 OK');
+            Log::info('Old QR sessions deactivated');
 
-            Log::info('Step 3: Getting/creating class session');
+            // Reuse existing active class session. Refresh QR should not create a new session.
             $classSession = $this->getOrCreateActiveClassSession($course, $locationPayload);
-            Log::info('Step 3 OK', ['session_id' => $classSession->id]);
+            Log::info('Class session ready', ['session_id' => $classSession->id ?? null]);
 
-            Log::info('Step 4: Creating QR session');
+            // Create QR session with 5-minute validity
             $qrSession = QRSession::createForCourse(
                 course: $course,
                 teacher: auth()->user(),
                 validitySeconds: config('attendance.qr.validity_seconds', 300),
                 classSession: $classSession
             );
-            Log::info('Step 4 OK', ['qr_session_id' => $qrSession->id]);
+            Log::info('QR session created', ['qr_session_id' => $qrSession->id]);
 
-            Log::info('Step 5: Generating QR code image');
+            // Generate QR code image
             $qrCodeService = new QRCodeService();
             $qrUrl = $qrCodeService->generate($qrSession);
-            Log::info('Step 5 OK', ['url_length' => strlen($qrUrl)]);
+            Log::info('QR code generated', ['url' => $qrUrl]);
 
-            Log::info('Step 6: Logging audit action');
+            // Log action
             AuditLog::logAction(
                 action: 'qr_generated',
                 entityType: 'QRSession',
@@ -170,7 +169,6 @@ class TeacherController extends Controller
                     'location_required' => $classSession->location_required,
                 ]
             );
-            Log::info('=== QR Generation SUCCESS ===');
 
             return response()->json([
                 'success' => true,
@@ -188,14 +186,13 @@ class TeacherController extends Controller
                 'message' => 'QR code generated successfully!',
             ]);
         } catch (\Throwable $e) {
-            Log::error('=== QR Generation FAILED ===', [
+            Log::error('QR code generation failed', [
                 'course_id' => $course->id,
                 'error_message' => $e->getMessage(),
                 'error_class' => get_class($e),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
-            ]);
-            Log::error('Stack trace: ' . $e->getTraceAsString());
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
