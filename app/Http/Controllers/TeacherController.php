@@ -332,37 +332,19 @@ class TeacherController extends Controller
     {
         $activeClassSession = $this->getActiveClassSession($course);
 
-        // Allow enriching an active session with location when first available.
-        if ($activeClassSession && $locationPayload && config('attendance.location.enabled', true)) {
-            if (!$activeClassSession->location_required && !$activeClassSession->hasReferenceLocation()) {
-                $activeClassSession->update([
-                    'location_required' => true,
-                    'expected_latitude' => $locationPayload['latitude'],
-                    'expected_longitude' => $locationPayload['longitude'],
-                    'allowed_radius_meters' => config('attendance.location.default_radius_meters', 150),
-                ]);
-            }
-
-            return $activeClassSession->refresh();
-        }
-
         if ($activeClassSession) {
             return $activeClassSession;
         }
 
-        $locationEnabled = config('attendance.location.enabled', true);
-        $hasLocation = $locationEnabled && $locationPayload !== null;
-
+        // Create new class session with minimal data to avoid DB errors
         return ClassSession::create([
             'course_id' => $course->id,
             'created_by' => auth()->id(),
             'started_at' => now(),
             'ends_at' => now()->addMinutes(config('attendance.session.default_duration_minutes', 90)),
             'is_active' => true,
-            'location_required' => $hasLocation,
-            'expected_latitude' => $hasLocation ? $locationPayload['latitude'] : null,
-            'expected_longitude' => $hasLocation ? $locationPayload['longitude'] : null,
-            'allowed_radius_meters' => config('attendance.location.default_radius_meters', 150),
+            'location_required' => false,  // Disable location for now to avoid DB issues
+            'allowed_radius_meters' => 150,
         ]);
     }
 
