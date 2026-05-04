@@ -58,6 +58,13 @@ export default function GenerateQR({ auth, course, current_qr, current_session }
     };
 
     const captureTeacherLocation = async () => {
+        const approved = window.confirm('This class session requires location verification. Do you approve sharing your location?');
+        if (!approved) {
+            setLocationStatus('fallback');
+            toast.warning('Location sharing denied. Session fallback mode will be used.');
+            return null;
+        }
+
         if (!navigator.geolocation) {
             setLocationStatus('unsupported');
             toast.warning('Geolocation is not supported in this browser. Session fallback mode will be used.');

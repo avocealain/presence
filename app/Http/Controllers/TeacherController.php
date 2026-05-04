@@ -136,11 +136,11 @@ class TeacherController extends Controller
             // Reuse existing active class session. Refresh QR should not create a new session.
             $classSession = $this->getOrCreateActiveClassSession($course, $locationPayload);
 
-            // Create QR session with 30-second validity
+            // Create QR session with 5-minute validity
             $qrSession = QRSession::createForCourse(
                 course: $course,
                 teacher: auth()->user(),
-                validitySeconds: config('attendance.qr.validity_seconds', 30),
+                validitySeconds: config('attendance.qr.validity_seconds', 300),
                 classSession: $classSession
             );
 
@@ -169,7 +169,7 @@ class TeacherController extends Controller
                 'token' => $qrSession->token,
                 'qr_url' => $qrUrl,
                 'expires_at' => $qrSession->expires_at,
-                'validity_seconds' => config('attendance.qr.validity_seconds', 30),
+                'validity_seconds' => config('attendance.qr.validity_seconds', 300),
                 'expires_in' => $qrSession->getTimeRemainingSeconds(),
                 'attendance_count' => 0,
                 'class_session_id' => $classSession->id,
