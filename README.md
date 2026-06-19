@@ -1,4 +1,4 @@
-# Smart Attendance System (Akıllı Yoklama Sistemi) 📱🎓
+# Smart Attendance System (Akıllı Yoklama Sistemi)
 
 A QR-code-based attendance management system designed to streamline presence tracking for educational and professional environments. This application provides a seamless way to log attendance while offering comprehensive analytics and user management tools.
 
